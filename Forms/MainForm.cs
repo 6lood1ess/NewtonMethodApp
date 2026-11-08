@@ -14,6 +14,7 @@ namespace NewtonMethodApp.Forms {
     private Panel _workspace;
     private Panel _chartCard;
     private Panel _resultCard;
+    private Panel _iterationPanel;
 
     private TextBox _txtFunction;
     private TextBox _txtA;
@@ -30,6 +31,11 @@ namespace NewtonMethodApp.Forms {
     private Button _btnCalculate;
     private Button _btnClear;
     private Button _btnBuild;
+
+    private Button _btnPrevStep;
+    private Button _btnNextStep;
+    private Button _btnResetStep;
+    private Label _lblStepInfo;
 
     private readonly IChartBuilder _chartBuilder;
     private readonly MainPresenter _presenter;
@@ -56,6 +62,9 @@ namespace NewtonMethodApp.Forms {
     public event EventHandler CalculateRequested;
     public event EventHandler ClearRequested;
     public event EventHandler BuildChartRequested;
+    public event EventHandler IterateForwardRequested;
+    public event EventHandler IterateBackRequested;
+    public event EventHandler ResetIterationRequested;
 
     public void ShowResult(string resultText, ExtremumType extremumType) {
       _lblResultHeader.Text = extremumType == ExtremumType.Minimum
@@ -65,14 +74,6 @@ namespace NewtonMethodApp.Forms {
       string[] lines = resultText.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
 
       _lblResultValue.Text = lines.Length > 0 ? lines[0] : string.Empty;
-
-      if (lines.Length > 1) {
-        string[] parts = lines[1].Split(':');
-
-        if (parts.Length > 1) {
-          string iterations = parts[1].Trim();
-        }
-      }
     }
 
     public void ClearResult() {
@@ -86,14 +87,28 @@ namespace NewtonMethodApp.Forms {
       _chartBuilder.Build(_chart, expression, a, b, extremum, extremumType);
     }
 
+    public void BuildChartWithIterations(string expression, double a, double b,
+                                         List<NewtonIteration> iterations, int currentStep) {
+      _chartBuilder.Build(_chart, expression, a, b, null, SelectedExtremumType);
+      _chartBuilder.DrawIterations(_chart, expression, a, b, iterations, currentStep);
+    }
+
+    public void ShowIterationControls(bool visible) {
+      _iterationPanel.Visible = visible;
+    }
+
+    public void ShowCurrentIteration(int step, int totalSteps, double x, double fx) {
+      _lblStepInfo.Text = $"Шаг {step} из {totalSteps}:  x = {x:F6},  f(x) = {fx:F6}";
+      _btnPrevStep.Enabled = step > 0;
+      _btnNextStep.Enabled = step < totalSteps;
+    }
+
     public void ShowError(string message) {
-      MessageBox.Show(message, "Ошибка",
-        MessageBoxButtons.OK, MessageBoxIcon.Error);
+      MessageBox.Show(message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     public void ShowInfo(string message) {
-      MessageBox.Show(message, "Информация",
-        MessageBoxButtons.OK, MessageBoxIcon.Information);
+      MessageBox.Show(message, "Информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private void BuildUi() {
@@ -285,8 +300,12 @@ namespace NewtonMethodApp.Forms {
         Alignment = StringAlignment.Center,
         BackColor = Color.Transparent,
         ForeColor = AppTheme.TextSecondary,
-        Font = AppTheme.FontRegular
+        Font = new Font("Segoe UI", 8.25f, FontStyle.Regular),
+        Position = new ElementPosition(2, 84, 96, 8),
+        LegendStyle = LegendStyle.Row,
+        IsTextAutoFit = false
       };
+      legend.Position.Auto = false;
       _chart.Legends.Add(legend);
 
       _chartCard.Controls.Add(_chart);
@@ -318,8 +337,68 @@ namespace NewtonMethodApp.Forms {
       _resultCard.Controls.Add(_lblResultValue);
       _resultCard.Controls.Add(_lblResultHeader);
 
+      _iterationPanel = new Panel {
+        Dock = DockStyle.Bottom,
+        Height = 44,
+        BackColor = AppTheme.Card,
+        Padding = new Padding(16, 4, 16, 4),
+        Visible = false
+      };
+
+      _btnPrevStep = new Button {
+        Text = "◀",
+        Width = 40,
+        Dock = DockStyle.Left,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = AppTheme.Card,
+        ForeColor = AppTheme.TextPrimary,
+        Font = AppTheme.FontBold,
+        Cursor = Cursors.Hand
+      };
+      _btnPrevStep.FlatAppearance.BorderColor = AppTheme.Border;
+      _btnPrevStep.Click += (s, e) => IterateBackRequested?.Invoke(this, EventArgs.Empty);
+
+      _btnNextStep = new Button {
+        Text = "▶",
+        Width = 40,
+        Dock = DockStyle.Right,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = AppTheme.Card,
+        ForeColor = AppTheme.TextPrimary,
+        Font = AppTheme.FontBold,
+        Cursor = Cursors.Hand
+      };
+      _btnNextStep.FlatAppearance.BorderColor = AppTheme.Border;
+      _btnNextStep.Click += (s, e) => IterateForwardRequested?.Invoke(this, EventArgs.Empty);
+
+      _btnResetStep = new Button {
+        Text = "Сброс",
+        Width = 70,
+        Dock = DockStyle.Right,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = AppTheme.Card,
+        ForeColor = AppTheme.TextPrimary,
+        Font = AppTheme.FontRegular,
+        Cursor = Cursors.Hand
+      };
+      _btnResetStep.FlatAppearance.BorderColor = AppTheme.Border;
+      _btnResetStep.Click += (s, e) => ResetIterationRequested?.Invoke(this, EventArgs.Empty);
+
+      _lblStepInfo = new Label {
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleCenter,
+        Font = AppTheme.FontRegular,
+        ForeColor = AppTheme.TextSecondary
+      };
+
+      _iterationPanel.Controls.Add(_lblStepInfo);
+      _iterationPanel.Controls.Add(_btnResetStep);
+      _iterationPanel.Controls.Add(_btnNextStep);
+      _iterationPanel.Controls.Add(_btnPrevStep);
+
       _workspace.Controls.Add(_chartCard);
       _workspace.Controls.Add(_resultCard);
+      _workspace.Controls.Add(_iterationPanel);
     }
 
     private Panel CreateCard() {

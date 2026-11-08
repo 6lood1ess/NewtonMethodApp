@@ -6,7 +6,6 @@ using NewtonMethodApp.Theme;
 namespace NewtonMethodApp.Charting {
   public class FunctionChartBuilder : IChartBuilder {
     private const int PointCount = 600;
-    private const double YRangeFactor = 1.4;
 
     private static readonly Color MinimumColor = AppTheme.Success;
     private static readonly Color MaximumColor = Color.FromArgb(230, 140, 0);
@@ -19,13 +18,8 @@ namespace NewtonMethodApp.Charting {
     }
 
     public void Build(Chart chart, string expression, double a, double b, double? extremum, ExtremumType extremumType) {
-      if (chart == null) {
-        throw new ArgumentNullException(nameof(chart));
-      }
-
-      if (a >= b) {
-        throw new ArgumentException("a должно быть меньше b");
-      }
+      if (chart == null) throw new ArgumentNullException(nameof(chart));
+      if (a >= b) throw new ArgumentException("a должно быть меньше b");
 
       chart.Series.Clear();
       chart.Titles.Clear();
@@ -55,9 +49,7 @@ namespace NewtonMethodApp.Charting {
         try {
           double y = _evaluator.Evaluate(expression, x);
 
-          if (double.IsNaN(y) || double.IsInfinity(y)) {
-            continue;
-          }
+          if (double.IsNaN(y) || double.IsInfinity(y)) continue;
 
           points.Add(new PointF((float)x, (float)y));
 
@@ -69,27 +61,19 @@ namespace NewtonMethodApp.Charting {
         }
       }
 
-      if (points.Count == 0) {
-        return;
-      }
+      if (points.Count == 0) return;
 
-      // Вычисление отступов по оси Y
       double spanY = yMax - yMin;
-      if (spanY < 1e-9) {
-        spanY = 1.0;
-      }
+      if (spanY < 1e-9) spanY = 1.0;
       double paddingY = spanY * 0.15;
       double yLow = yMin - paddingY;
       double yHigh = yMax + paddingY;
 
-      // Вычисление отступов по оси X,
-      // чтобы крайние точки не прилипали к осям
       double spanX = b - a;
       double paddingX = spanX * 0.05;
       double xLow = a - paddingX;
       double xHigh = b + paddingX;
 
-      // Настройка оси
       area.BackColor = AppTheme.Card;
       area.AxisX.Title = "x";
       area.AxisY.Title = "f(x)";
@@ -110,7 +94,6 @@ namespace NewtonMethodApp.Charting {
       area.AxisX.IntervalAutoMode = IntervalAutoMode.VariableCount;
       area.AxisY.IntervalAutoMode = IntervalAutoMode.VariableCount;
       
-      // Применение новых границ с отступами
       area.AxisX.Minimum = xLow;
       area.AxisX.Maximum = xHigh;
       area.AxisY.Minimum = yLow;
@@ -119,9 +102,8 @@ namespace NewtonMethodApp.Charting {
       area.Position.Auto = false;
       area.Position = new ElementPosition(8, 8, 88, 84);
       area.InnerPlotPosition.Auto = false;
-      area.InnerPlotPosition = new ElementPosition(14, 10, 84, 75);
+      area.InnerPlotPosition = new ElementPosition(14, 10, 84, 68);
 
-      // Построение графика функции
       var functionSeries = new Series("Function") {
         ChartType = SeriesChartType.Line,
         BorderWidth = 2,
@@ -148,7 +130,6 @@ namespace NewtonMethodApp.Charting {
         Color highlightColor = extremumType == ExtremumType.Minimum ? MinimumColor : MaximumColor;
         string markerLabel = extremumType == ExtremumType.Minimum ? "min" : "max";
 
-        // Вертикальная пунктирная линия
         var guideSeries = new Series("ExtremumGuide") {
           ChartType = SeriesChartType.Line,
           BorderWidth = 1,
@@ -162,7 +143,6 @@ namespace NewtonMethodApp.Charting {
         guideSeries.Points.AddXY(mx, yHigh);
         chart.Series.Add(guideSeries);
 
-        // Точка экстремума
         var extremumSeries = new Series("Extremum") {
           ChartType = SeriesChartType.Point,
           MarkerStyle = MarkerStyle.Circle,
@@ -177,7 +157,6 @@ namespace NewtonMethodApp.Charting {
         extremumSeries.Points.AddXY(mx, my);
         chart.Series.Add(extremumSeries);
 
-        // Подпись к точке
         extremumSeries.Points[0].Label = $"x* = {mx:F4}";
         extremumSeries.Points[0].Font = new Font("Segoe UI", 8.5f, FontStyle.Bold);
         extremumSeries.Points[0].LabelForeColor = highlightColor;
@@ -188,7 +167,88 @@ namespace NewtonMethodApp.Charting {
       }
     }
 
-    // Отрисовка границ a и b
+    public void DrawIterations(Chart chart, string expression, double a, double b,
+                               List<NewtonIteration> iterations, int currentStep) {
+      if (chart == null || iterations == null || iterations.Count == 0) return;
+
+      // Удаление старых серий траектории
+      var toRemove = chart.Series
+        .Where(s => s.Name.StartsWith("NewtonStep") || s.Name.StartsWith("NewtonTrail"))
+        .ToList();
+      foreach (var s in toRemove) chart.Series.Remove(s);
+
+      var area = chart.ChartAreas[0];
+      double yLow = area.AxisY.Minimum;
+      double yHigh = area.AxisY.Maximum;
+
+      // 1. Отрисовка линии траектории (все пройденные шаги)
+      var trail = new Series("NewtonTrail") {
+        ChartType = SeriesChartType.Line,
+        BorderWidth = 2,
+        Color = AppTheme.Sidebar,
+        BorderDashStyle = ChartDashStyle.Solid,
+        ChartArea = "MainArea",
+        LegendText = "Путь"
+      };
+
+      for (int stepIndex = 0; stepIndex <= currentStep && stepIndex < iterations.Count; ++stepIndex) {
+        trail.Points.AddXY(iterations[stepIndex].X, iterations[stepIndex].Fx);
+      }
+      chart.Series.Add(trail);
+
+      // 2. Точки шагов
+      for (int stepIndex = 0; stepIndex <= currentStep && stepIndex < iterations.Count; ++stepIndex) {
+        var it = iterations[stepIndex];
+        bool isCurrent = (stepIndex == currentStep);
+        
+        Color c = isCurrent 
+            ? AppTheme.Accent 
+            : Color.FromArgb(200, 80, 120, 200);
+        
+        int size = isCurrent ? 10 : 7; 
+
+        var pointSeries = new Series($"NewtonStep{stepIndex}") {
+          ChartType = SeriesChartType.Point,
+          MarkerStyle = MarkerStyle.Circle,
+          MarkerSize = size,
+          MarkerColor = c,
+          MarkerBorderColor = Color.White,
+          MarkerBorderWidth = 1,
+          ChartArea = "MainArea",
+          IsVisibleInLegend = false
+        };
+        pointSeries.Points.AddXY(it.X, it.Fx);
+
+        if (isCurrent) {
+            pointSeries.Points[0].Label = $"x_{stepIndex}";
+            pointSeries.Points[0].Font = new Font("Segoe UI", 8f, FontStyle.Bold);
+            pointSeries.Points[0].LabelForeColor = c;
+            pointSeries.Points[0].LabelBackColor = Color.White;
+            pointSeries.Points[0].LabelBorderColor = c;
+            pointSeries.Points[0].LabelBorderDashStyle = ChartDashStyle.Solid;
+            pointSeries.Points[0].LabelBorderWidth = 1;
+        }
+
+        chart.Series.Add(pointSeries);
+      }
+
+      // 3. Вертикальная линия от текущей точки до оси X
+      if (currentStep < iterations.Count) {
+        var current = iterations[currentStep];
+        var guide = new Series("NewtonStepGuide") {
+          ChartType = SeriesChartType.Line,
+          BorderWidth = 1,
+          Color = AppTheme.Accent,
+          BorderDashStyle = ChartDashStyle.Dot,
+          ChartArea = "MainArea",
+          IsVisibleInLegend = false
+        };
+        guide.Points.AddXY(current.X, yLow);
+        guide.Points.AddXY(current.X, current.Fx);
+        chart.Series.Add(guide);
+      }
+    }
+
     private void DrawBoundary(Chart chart, string seriesName, double x, double yLow, double yHigh, string label) {
       var series = new Series(seriesName) {
         ChartType = SeriesChartType.Line,

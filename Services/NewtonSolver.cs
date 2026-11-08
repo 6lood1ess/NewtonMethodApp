@@ -24,6 +24,16 @@ namespace NewtonMethodApp.Services {
       double x = (parameters.A + parameters.B) / 2.0;
       int n = 0;
 
+      var iterations = new List<NewtonIteration>();
+
+      iterations.Add(new NewtonIteration {
+        Step = 0,
+        X = x,
+        Fx = _evaluator.Evaluate(expr, x),
+        F1x = _evaluator.EvaluateFirstDerivative(expr, x),
+        F2x = _evaluator.EvaluateSecondDerivative(expr, x)
+      });
+
       while (n < MaxIterations) {
         double f1 = _evaluator.EvaluateFirstDerivative(expr, x);
         double f2 = _evaluator.EvaluateSecondDerivative(expr, x);
@@ -38,8 +48,8 @@ namespace NewtonMethodApp.Services {
 
         double nextX = x - f1 / f2;
 
-        // Если метод ушел за [a, b], значит стационарной точки внутри нет
-        double tolerance = 1e-5; // небольшой допуск на погрешность
+        // Защита от вылета за пределы отрезка
+        double tolerance = 1e-5;
         if (nextX < parameters.A - tolerance || nextX > parameters.B + tolerance) {
           throw new InvalidOperationException(
             $"Метод Ньютона вышел за пределы отрезка [a, b] (x = {nextX:F6}). " +
@@ -48,32 +58,49 @@ namespace NewtonMethodApp.Services {
 
         if (Math.Abs(nextX - x) < parameters.Epsilon || Math.Abs(f1) < parameters.Epsilon) {
           x = nextX;
+
+          iterations.Add(new NewtonIteration {
+            Step = n + 1,
+            X = x,
+            Fx = _evaluator.Evaluate(expr, x),
+            F1x = _evaluator.EvaluateFirstDerivative(expr, x),
+            F2x = _evaluator.EvaluateSecondDerivative(expr, x)
+          });
+
           break;
         }
 
         x = nextX;
         n++;
+
+        iterations.Add(new NewtonIteration {
+          Step = n,
+          X = x,
+          Fx = _evaluator.Evaluate(expr, x),
+          F1x = _evaluator.EvaluateFirstDerivative(expr, x),
+          F2x = _evaluator.EvaluateSecondDerivative(expr, x)
+        });
       }
 
       if (n >= MaxIterations) {
         throw new InvalidOperationException("Превышено максимальное число итераций. Метод Ньютона не сошелся");
       }
 
-      // Убеждается, что найденная точка действительно является минимумом (f'' > 0) 
-      // или максимумом (f'' < 0)
+      // Проверка типа экстремума
       double f2Final = _evaluator.EvaluateSecondDerivative(expr, x) * sign;
       if (f2Final <= 0) {
         string typeName = parameters.ExtremumType == ExtremumType.Minimum ? "минимумом" : "максимумом";
         throw new InvalidOperationException(
           $"Найдена стационарная точка x = {x:F6}, но она не является {typeName}. " +
-          "Вторая производная имеет неверный знак (найдена точка перегиба или противоположный экстремум)");
+          "Вторая производная имеет неверный знак");
       }
 
       var result = new NewtonResult {
         Extremum = x,
         FunctionValueAtExtremum = _evaluator.Evaluate(expr, x),
         ExtremumType = parameters.ExtremumType,
-        IterationsCount = n
+        IterationsCount = n,
+        Iterations = iterations
       };
 
       return result;
@@ -90,11 +117,14 @@ namespace NewtonMethodApp.Services {
         try {
           y = _evaluator.Evaluate(expression, x);
         } catch (Exception ex) {
-          throw new InvalidOperationException($"Функция не определена в точке x = {x:F6}: {ex.Message}", ex);
+          throw new InvalidOperationException(
+            $"Функция не определена в точке x = {x:F6}: {ex.Message}", ex);
         }
 
         if (double.IsNaN(y) || double.IsInfinity(y)) {
-          throw new InvalidOperationException($"Функция не определена в точке x = {x:F6} (значение = {y})");
+          throw new InvalidOperationException(
+            $"Функция не определена в точке x = {x:F6} (значение = {y}). " +
+            "На отрезке [a, b], скорее всего, есть точка разрыва");
         }
       }
     }

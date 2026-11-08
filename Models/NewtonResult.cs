@@ -5,5 +5,6 @@
     public double FunctionValueAtExtremum { get; set; }
     public ExtremumType ExtremumType { get; set; }
     public int IterationsCount { get; set; }
+    public List<NewtonIteration> Iterations { get; set; } = new();
   }
 }
